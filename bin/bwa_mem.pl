@@ -75,6 +75,7 @@ sub setup {
               't|threads=i' => \$opts{'threads'},
               'r|reference=s' => \$opts{'reference'},
               'o|outdir=s' => \$opts{'outdir'},
+              'w|workdir=s' => \$opts{'workdir'},
               's|sample=s' => \$opts{'sample'},
               'p|process=s' => \$opts{'process'},
               'i|index=i' => \$opts{'index'},
@@ -111,8 +112,9 @@ sub setup {
 
   # now safe to apply defaults
   $opts{'threads'} = 1 unless(defined $opts{'threads'});
+  $opts{'workdir'} = $opts{'outdir'} unless(defined $opts{'workdir'});
 
-  my $tmpdir = File::Spec->catdir($opts{'outdir'}, 'tmpMap_'.$opts{'sample'});
+  my $tmpdir = File::Spec->catdir($opts{'workdir'}, 'tmpMap_'.$opts{'sample'});
   make_path($tmpdir) unless(-d $tmpdir);
   my $progress = File::Spec->catdir($tmpdir, 'progress');
   make_path($progress) unless(-d $progress);
