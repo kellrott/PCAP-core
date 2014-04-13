@@ -103,6 +103,16 @@ sub merge_and_mark_dup {
     $command .= ' I='.$_->tstub.'_sorted.bam';
   }
   PCAP::Threaded::external_process_handler(File::Spec->catdir($tmp, 'logs'), $command, 0);
+  open( my $info_h, ">", $marked . ".info" );
+  for my $input(@{$options->{'meta_set'}}) {
+      my $header_cmd = sprintf "samtools view -H %s |", $input->in;
+      open( my $header, $header_cmd );
+      while (<$header>) {
+        next unless($_ =~ m/^\@CO\t(.*)/);
+        print $info_h $1, "\n";
+      }
+  }
+  close($info_h);
   return $marked;
 }
 
