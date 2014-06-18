@@ -1,3 +1,28 @@
+1.0.4
+  Install biobambam 0.0.142 to prevent over-counting of duplicates when multiple
+  libraries, also required libmaus 0.0.124.
+  Improve install for those working with multiple perl installs.
+  Improve version inheritance, less code
+1.0.3
+  Corrected issue from dynamic de-reference of hash, issue fort pre 5.14 perl
+  and potentially unstable in future.
+  Added missing project code to cv terms.
+  Bug-fixed upgrade path, still needs better solution.
+  Cleaned up messaging in Threaded module.
+1.0.2
+  Upgrade install to pull biobambam 0.0.138
+   - fastqtobam option 'pairedfile' for where readnames don't have trailing '/1' or '/2'.
+   - fastqtobam option to relax qscore validation without turning off... careful
+  Upgrade install to pull BWA 0.7.8
+   - performance improvements for short read alignment (100bp)
+1.0.1
+  Upgrade install to pull biobambam 0.0.135
+    - fastqtobam supports Casava v1.8
+    - bamsort supports NM/MD correction during sam->bam/merge process
+  Minor enhancement to BAS reader module
+  Sample name from command line passed through to SM of RG header in bwa_mem.pl
+  SRA.pm - check that rg id is unique within run of code (thanks to Junjun Zhang)
+  Threads.pm - join interval is now configurable.
 1.0.0
   bam_stats.pl actually installed now.
   Basic *.bas perl access module.

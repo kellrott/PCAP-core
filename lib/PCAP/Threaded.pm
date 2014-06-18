@@ -21,7 +21,6 @@ package PCAP::Threaded;
 
 
 use PCAP;
-our $VERSION = PCAP->VERSION;
 
 use strict;
 use autodie qw(:all);
@@ -39,6 +38,8 @@ BEGIN {
   if($Config{useithreads}) { use threads; }
 };
 
+our $OUT_ERR = 1;
+
 sub new {
   my ($class, $max_threads) = @_;
   unless($Config{useithreads}) {
@@ -50,9 +51,24 @@ sub new {
     $max_threads = 1;
   }
   croak "Number of threads was NAN: $max_threads" if($max_threads !~ m/^[[:digit:]]+$/xms);
-  my $self = { 'threads' => $max_threads };
+  my $self = {'threads' => $max_threads,
+              'join_interval' => 1,};
   bless $self, $class;
   return $self;
+}
+
+sub disable_out_err {
+  $OUT_ERR = 0;
+  return $OUT_ERR;
+}
+
+sub enable_out_err {
+  $OUT_ERR = 1;
+  return $OUT_ERR;
+}
+
+sub use_out_err {
+  return $OUT_ERR;
 }
 
 sub add_function {
@@ -66,6 +82,16 @@ sub add_function {
   $self->{'functions'}->{$function_name}->{'threads'} = $self->_suitable_threads($divisor);
 
   return 1;
+}
+
+sub thread_join_interval {
+  my ($self, $sec) = @_;
+  if(defined $sec) {
+    croak 'join_interval must be an integer' if($sec !~ m/^[[:digit:]]+$/);
+    croak 'join_interval must be 1 or more' if($sec < 1);
+    $self->{'join_interval'} = $sec;
+  }
+  $self->{'join_interval'};
 }
 
 sub run {
@@ -89,14 +115,14 @@ sub run {
         threads->create($function_ref, $index++, @params);
         last if($index > $iterations);
       }
-      sleep 10 while(threads->list(threads::joinable) == 0);
+      sleep $self->thread_join_interval while(threads->list(threads::joinable) == 0);
       for my $thr(threads->list(threads::joinable)) {
         $thr->join;
         if(my $err = $thr->error) { die "Thread error: $err\n"; }
       }
     }
     # last gasp for any remaining threads
-    sleep 2 while(threads->list(threads::running) > 0);
+    sleep $self->thread_join_interval while(threads->list(threads::running) > 0);
     for my $thr(threads->list(threads::joinable)) {
       $thr->join;
       if(my $err = $thr->error) { die "Thread error: $err\n"; }
@@ -145,20 +171,46 @@ sub touch_success {
 }
 
 sub external_process_handler {
-  my ($tmp, $command, @indexes) = @_;
-  my $caller = (caller(1))[3];
-  my $suffix = join q{.}, @indexes;
-  my $out = File::Spec->catfile($tmp, "$caller.$suffix.out");
-  my $err = File::Spec->catfile($tmp, "$caller.$suffix.err");
+  my ($tmp, $command_in, @indexes) = @_;
 
-  my $out_fh = IO::File->new($out, "w+");
-  my $err_fh = IO::File->new($err, "w+");
-  try {
-    warn "Starting: $command\n";
-    capture { system($command); } stdout => $out_fh, stderr => $err_fh;
-  } catch {
-    die $_ if($_);
-  };
+  my @commands;
+  if(ref $command_in eq 'ARRAY') {
+    @commands = @{$command_in}
+  }
+  else {
+    @commands = ($command_in);
+  }
+
+  if(&use_out_err == 0) {
+    # these may be marshalled to different files so output both
+    try {
+      for my $c(@commands) {
+        warn "\nErrors from command: $c\n\n";
+        print "\nOutput from command: $c\n\n";
+        system($c);
+      }
+    }
+    catch { die $_; };
+  }
+  else {
+    my $caller = (caller(1))[3];
+    my $suffix = join q{.}, @indexes;
+    my $out = File::Spec->catfile($tmp, "$caller.$suffix.out");
+    my $err = File::Spec->catfile($tmp, "$caller.$suffix.err");
+
+    my $out_fh = IO::File->new($out, "w+");
+    my $err_fh = IO::File->new($err, "w+");
+    try {
+      for my $c(@commands) {
+        print $err_fh "\nErrors from command: $c\n\n";
+        print $out_fh "\nOutput from command: $c\n\n";
+        capture { system($c); } stdout => $out_fh, stderr => $err_fh;
+      }
+    } catch {
+      die $_ if($_);
+    };
+  }
+
   return 1;
 }
 
@@ -215,6 +267,28 @@ callback registered in add_function.
 
 These are non-object methods which are useful to related code
 
+=head3 Configuration
+
+=over 4
+
+=item use_out_err
+
+Determines if stdout/stderr are redirected to file, by default 1/true.
+
+=item disable_out_err
+
+Prevent calls to external_process_handler from redirecting stdout/stderr to files.
+
+=item enable_out_err
+
+Enable redirect of stdout/stderr to files when calling external_process_handler.
+
+=item thread_join_interval
+
+Set/get the number of seconds to wait between thread joins.  Default 1.
+
+=back
+
 =head3 Resume Helpers
 
 These are useful methods to help you program resume from the last successfully completed step.
@@ -250,10 +324,16 @@ Requires implementation of L<success_exists()|PCAP::Threaded/touch_success>.
 
 =item external_process_handler
 
-  PCAP::Threaded::external_process_handler(File::Spec->catdir($tmp, 'logs'), $command, $index[, $index_2...]);
+  PCAP::Threaded::external_process_handler($logdir, $commands, $index[, $index_2...]);
+
+  @params logdir   - Path to pre-existing log directory
+  @params commands - Scalar command or arr-ref of commands
+  @params index    - Which index this is, specifically for log/err files.
 
 Wraps up command with stdout and stderr catchalls to keep the output of each threaded process
 separated from the script itself.  Added to simplify interpretation of any issues that may occur.
+
+If you don't want to capture stdout/stderr see <disable_out_err>.
 
 ($index_2... may be useful for some other implementation, see L<bwa_aln()|PCAP::Bwa/bwa_aln>).
 

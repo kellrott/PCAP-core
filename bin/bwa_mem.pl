@@ -23,7 +23,7 @@
 BEGIN {
   use Cwd qw(abs_path);
   use File::Basename;
-  push (@INC,dirname(abs_path($0)).'/../lib');
+  unshift (@INC,dirname(abs_path($0)).'/../lib');
 };
 
 use strict;
@@ -36,6 +36,7 @@ use File::Spec;
 use Pod::Usage qw(pod2usage);
 use List::Util qw(first);
 use Const::Fast qw(const);
+use File::Copy qw(copy move);
 
 use PCAP::Cli;
 use PCAP::Bam;
@@ -43,24 +44,46 @@ use PCAP::Bwa;
 use PCAP::Bwa::Meta;
 use version;
 
-const my @VALID_PROCESS => qw(bwamem mark);
+const my @VALID_PROCESS => qw(bwamem mark stats);
 const my %INDEX_FACTOR => ( 'bwamem' => 1,
-                            'mark'   => 1,);
+                            'mark'   => 1,
+                            'stats'  => 1,);
 
 {
   my $options = setup();
   $options->{'meta_set'} = PCAP::Bwa::Meta::files_to_meta($options->{'tmp'}, $options->{'raw_files'}, $options->{'sample'});
 
+  if($options->{'reference'} =~ m/\.gz$/) {
+    if(exists $options->{'index'}) {
+      my $tmp_ref = $options->{'reference'};
+      $tmp_ref =~ s/\.gz$//;
+      if(-e $tmp_ref) {
+        $options->{'decomp_ref'} = $tmp_ref;
+      }
+      else {
+        die "ERROR: When 'index' is defined you must provide a decompressed reference (colocated is sufficient)\n";
+      }
+    }
+    else {
+      $options->{'decomp_ref'} = "$options->{tmp}/decomp.fa";
+      system([0,2], "(gunzip -c $options->{reference} > $options->{decomp_ref}) >& /dev/null") unless(-e $options->{'decomp_ref'});
+      copy("$options->{reference}.fai", "$options->{tmp}/decomp.fa.fai") unless(-e "$options->{decomp_ref}.fai");
+    }
+  }
+
   my $bam_count = scalar @{$options->{'meta_set'}};
   PCAP::Bwa::bwa_mem($options) if(!exists $options->{'process'} || $options->{'process'} eq 'bwamem');
-  if(!exists $options->{'process'} || $options->{'process'} eq 'mark') {
-    PCAP::Bam::merge_and_mark_dup($options);
+  PCAP::Bam::merge_and_mark_dup($options) if(!exists $options->{'process'} || $options->{'process'} eq 'mark');
+  if(!exists $options->{'process'} || $options->{'process'} eq 'stats') {
+    PCAP::Bam::bam_stats($options);
     &cleanup($options);
   }
 }
 
 sub cleanup {
-  my $tmpdir = shift->{'tmp'};
+  my $options = shift;
+  my $tmpdir = $options->{'tmp'};
+  move(File::Spec->catdir($tmpdir, 'logs'), File::Spec->catdir($options->{'outdir'}, 'logs')) || die $!;
   remove_tree $tmpdir if(-e $tmpdir);
 	return 0;
 }
@@ -143,6 +166,7 @@ bwa_aln.pl [options] [file(s)...]
     -process   -p   Only process this step then exit, optionally set -index
                       bwamem - only applicable if input is bam
                         mark - Run duplicate marking (-index N/A)
+                       stats - Generates the *.bas file for the final BAM.
 
     -index     -i   Optionally restrict '-p' to single job
                       bwamem - 1..<lane_count>

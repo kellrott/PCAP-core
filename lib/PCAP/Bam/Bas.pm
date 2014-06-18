@@ -20,7 +20,6 @@ package PCAP::Bam::Bas;
 ##########LICENCE##########
 
 use PCAP;
-our $VERSION = PCAP->VERSION;
 
 use strict;
 use English qw( -no_match_vars );
@@ -80,6 +79,10 @@ sub bas_keys {
   return $self->{'keys'};
 }
 
+sub read_groups {
+  return (sort keys %{shift->{'_data'}});
+}
+
 sub get {
   my ($self, $rg, $key) = @_;
   die qq{Readgroup '$rg' does not exist\n} unless(exists $self->{'_data'}->{$rg});
@@ -107,6 +110,10 @@ Construct an access object for BAM statistics file.
 =item bas_keys
 
 Returns the list of available keys for this BAS file.
+
+=item read_groups
+
+Returns sorted list of read-groups found in this BAS file.
 
 =item get
 

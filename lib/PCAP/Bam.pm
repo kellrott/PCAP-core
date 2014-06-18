@@ -21,7 +21,6 @@ package PCAP::Bam;
 
 
 use PCAP;
-our $VERSION = PCAP->VERSION;
 
 use strict;
 use autodie qw(:all);
@@ -39,6 +38,7 @@ use PCAP::Threaded;
 
 const my $BAMCOLLATE => q{(%s colsbs=268435456 collate=1 reset=1 exclude=SECONDARY,QCFAIL,SUPPLEMENTARY classes=F,F2 T=%s filename=%s level=1 > %s)};
 const my $BAMBAM_DUP => q{ O=%s M=%s tmpfile=%s markthreads=%s rewritebam=1 rewritebamlevel=1 index=1 md5=1};
+const my $BAM_STATS => q{ -i %s -o %s};
 
 sub new {
   my ($class, $bam) = @_;
@@ -52,7 +52,7 @@ sub new {
 }
 
 sub rg_line_for_output {
-  my ($bam, $uniq_id) = @_;
+  my ($bam, $sample, $uniq_id) = @_;
   my $sam = sam_ob($bam);
   my $header = $sam->header->text;
   my $rg_line;
@@ -63,6 +63,9 @@ sub rg_line_for_output {
     if($uniq_id) {
       my $uuid = lc Data::UUID->new->create_str;
       $rg_line =~ s/\tID:[^\t]+/\tID:$uuid/;
+    }
+    if(defined $sample) {
+      $rg_line =~ s/\tSM:[^\t]+/\tSM:$sample/;
     }
     $rg_line =~ s/\t/\\t/g;
   }
@@ -119,6 +122,18 @@ sub merge_and_mark_dup {
   }
   close($info_h);
   return $marked;
+}
+
+sub bam_stats {
+  # uncoverable subroutine
+  my $options = shift;
+  my $tmp = $options->{'tmp'};
+  my $bam = File::Spec->catdir($options->{'outdir'}, $options->{'sample'}).'.bam';;
+  my $bas = "$bam.bas";
+  my $command = which('bam_stats.pl') || die "Unable to find 'bam_stats.pl' in path";
+  $command .= sprintf $BAM_STATS, $bam, $bas;
+  PCAP::Threaded::external_process_handler(File::Spec->catdir($tmp, 'logs'), $command, 0);
+  return $bas;
 }
 
 sub sample_name {
