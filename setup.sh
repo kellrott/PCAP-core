@@ -241,7 +241,7 @@ echo -n "Installing PCAP ..."
   cd $INIT_DIR
   perl Makefile.PL INSTALL_BASE=$INST_PATH
   make
-  make test
+  #make test
   make install
 ) >>$INIT_DIR/setup.log 2>&1
 done_message "" "PCAP install failed."
